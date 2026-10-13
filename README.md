@@ -60,6 +60,8 @@ SSD n-gram cache); "cold" numbers assume no prior identical prefix.
 
 ## Runbook
 
+Manual, per config:
+
 ```bash
 cd ~/Documents/bench
 .venv/bin/python runner/eval.py --config configs/<cfg>.json --suite pilot      # validate a new server
@@ -68,6 +70,26 @@ cd ~/Documents/bench
 # resume after a crash:
 .venv/bin/python runner/eval.py --config configs/<cfg>.json --suite tier1 --run-dir results/<cfg>/<dir>
 ```
+
+Orchestrated, unattended (recommended for the matrix):
+
+```bash
+.venv/bin/python runner/orchestrate.py --dry-run        # show plan: all enabled configs by priority
+.venv/bin/python runner/orchestrate.py                  # pilot -> perf -> tier1 per config, overnight
+.venv/bin/python runner/orchestrate.py --configs 'configs/mtplx-qwen38-flash-next*.json' --stages pilot
+.venv/bin/python runner/orchestrate.py                  # rerun after crash/interrupt: resumes automatically
+```
+
+Orchestrator behavior: state in `orchestrator_state.json` (per-stage status,
+logs under `logs/<config>/`); stages pilot→perf→tier1 with per-stage timeouts
+(pilot 45m, perf 2h, tier1 8h) and retries; one model resident at a time —
+launching a real engine stops all other known servers; `managed: "auto"`
+attaches if the server is already healthy (baseline does this) else launches;
+interrupted eval stages resume item-by-item via `--run-dir`; macOS notification
+on queue completion. `managed: false` = attach-only, never kills.
+
+Enabling a config: fill its `launch` command, set `"enabled": true` (and give
+it a `priority`). The queue = enabled configs sorted by priority.
 
 Results: `results/<config>/<suite>-<ts>/{generations.jsonl, metrics.json}` and
 `results/<config>/perf-<ts>/perf.json`. One model resident at a time (stop the
@@ -84,7 +106,8 @@ previous server before starting the next config — memory fairness).
 
 ## TODO
 
-- [ ] orchestrator: queue of managed configs with server launch/health/teardown (enables full unattended matrix)
+- [x] orchestrator: queue of managed configs with server launch/health/teardown (validated via tests/mock_server.py lifecycle test)
+- [ ] fill launch commands for stub configs as models get downloaded (Flash Next, ds4, llama.cpp, LM Studio, 3.6-35B)
 - [ ] official IFEval dataset+verifier; HumanEval+ exec sandbox; BFCL; GPQA/MMLU-Pro; PPL/KL quant check
 - [ ] RULER long-context; nanoclaw capstone task pack
 - [ ] stats: Wilson CIs on all accuracy numbers in metrics.json
